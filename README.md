@@ -46,9 +46,9 @@ The ESP32 code is simple. The BME280 sensor is wired to the ESP32 and the sensor
     
     int httpResponseCode = http.POST(httpRequestData);
 
-I added the deep sleep functionality for it to get data every **15mins**. Hence the trend of data is better seen. With a maximum of 40 data points, we can see how the data changes over 10 hours.
+I added the deep sleep functionality for it to get data every **10mins**. Hence the trend of data is better seen. With a maximum of 40 data points, we can see how the data changes over around 6 hours.
 
-For the time function, I used the internal RTC memory and the NTP Client server to get the time which is printed on the Eink screen. There will be times that the post function does not work, or WiFi is not connected, and I still want to see the last reading. The NTP Client Server is initially used to get the time and is saved to RTC memory. If wifi is not connected, then the RTC memory is incremented by 15mins and that is displayed. 
+For the time function, I used the internal RTC memory and the NTP Client server to get the time which is printed on the Eink screen. There will be times that the post function does not work, or WiFi is not connected, and I still want to see the last reading. The NTP Client Server is initially used to get the time and is saved to RTC memory. If wifi is not connected, then the RTC memory is incremented by 10mins and that is displayed. 
 
 Note that the RTC memory will be initialised on boot up to the assigned value. After that it uses past stored RTC values.
 

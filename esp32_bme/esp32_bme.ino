@@ -49,7 +49,8 @@ float temperature, humidity, pressure;
 
 //Connection Timings
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
-const uint64_t TIME_TO_SLEEP = 10*60;  //in seconds  --> record timing every every N mins
+#define SLEEP_MINUTES 10
+const uint64_t TIME_TO_SLEEP = SLEEP_MINUTES*60;  
 uint64_t time_now;
 int8_t max_tries = 10;
 
@@ -298,9 +299,9 @@ void loop() {
   UploadData(temperature,humidity,pressure);
 
   if(error_code == 1){ // No Wifi
-    Minutes = Minutes + 15;
+    Minutes = Minutes + SLEEP_MINUTES;
 
-    if(Minutes + 15 >= 60){
+    if(Minutes + SLEEP_MINUTES >= 60){
       Minutes = Minutes%60;
       Hours = (Hours + 1)%24;
     } 
