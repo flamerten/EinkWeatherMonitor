@@ -1,8 +1,9 @@
-# Visualize Your Sensor Readings from Anywhere in the World (ESP32/ESP8266 + MySQL + PHP)
+# Esp32 EinkWeatherMonitor
 
-I followed a tutorial from this [Source](https://randomnerdtutorials.com/visualize-esp32-esp8266-sensor-readings-from-anywhere/) in order to create an webserver. The webserver is hosted by Bluehost and an ESP32 connected to Wifi posts BME280 sensor data to an SQL server. This is displayed on a chart. This README will be used to explain various parts of the code.
+I followed a tutorial from this [Source](https://randomnerdtutorials.com/visualize-esp32-esp8266-sensor-readings-from-anywhere/) in order to create an webserver. The webserver is hosted by Bluehost and an ESP32 connected to Wifi posts BME280 sensor data to an SQL server. This is displayed on a chart. The ESP32 displays data from the BME on an Eink Screen.
 
-[ESP32 Chart](http://skd.yup.mybluehost.me/esp-chart.php)
+<img src = "src/FirstPrototype.jpg" width = "800" />
+
 
 ## Network Architecture
 <img src="src/network_architecture.png" width="800"/>
@@ -32,7 +33,7 @@ Below shows an example char viewed on web browser. Note that on mobile browser t
 ## ESP32
 An [Adafruit ESP32 Huzzah v2](https://www.adafruit.com/product/5400) was used because it could fit in the breadboard better and had Lipo charging capabilities. Hence, this could be used a more portable project.
 
-The ESP32 code is simple. The BME280 sensor is wired to the ESP32 and the sensor data is posted in the format. Note that `serverName` is the website which refers to http://skd.yup.mybluehost.me/post-data.php. 
+The ESP32 code is simple. The BME280 sensor is wired to the ESP32 and the sensor data is posted in the format. Note that `serverName` is the post data website, for instance: https://example/post-data.php.
 
     WiFiClient client;
     HTTPClient http;
