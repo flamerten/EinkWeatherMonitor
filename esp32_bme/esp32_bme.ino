@@ -113,6 +113,8 @@ void printData(float temp, float hum,float pres){
   display.drawInvertedBitmap(0,0,WeatherBitmapArray,296,128, GxEPD_BLACK); //Not too sure why it must be inverted?
   int y_reading = 80;
 
+  int new_pressure = round(pres/100.0F);
+
   //display.setCursor(0, 0);
   display.setTextSize(2);
 
@@ -123,7 +125,7 @@ void printData(float temp, float hum,float pres){
   display.print( String(hum) + "%");
 
   display.setCursor(195,y_reading);
-  display.print( String(temp) + "hPa");
+  display.print( String(new_pressure) + "hPa"); //pres/100.0F gives decimal places
 
   //128 X 296  
   //String text = "00:00:00";
