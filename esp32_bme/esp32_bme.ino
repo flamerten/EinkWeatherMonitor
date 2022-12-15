@@ -16,6 +16,7 @@
 
 #include <SPI.h>
 #include <GxEPD2_BW.h>
+//#include <Fonts/Picopixel.h>
 
 #include <NTPClient.h>
 #include <WiFiUdp.h>
@@ -38,6 +39,7 @@ String apiKeyValue = ESP32_API_KEY;
 
 //Sensor
 Adafruit_BME280 bme;
+#define SEALEVELPRESSURE_HPA 1013.25
 float temperature, humidity, pressure;
 
 //Set LEDPIN
@@ -93,7 +95,7 @@ void initEink(){
   display.init(115200); // default 10ms reset pulse, e.g. for bare panels with DESPI-C02
   display.setRotation(3);     // landscape orientaion 
   display.setFullWindow();  
-  display.setFont();
+  display.setFont(); //display.setFont(&Picopixel);
   display.setTextColor(GxEPD_BLACK, GxEPD_WHITE); 
 }
 
@@ -108,24 +110,150 @@ void clearEink(){
   delay(100);  
 }
 
+void PrintNoWifi(){
+  display.print("No Wifi");  
+}
+
+void PrintHTTPFail(int code){
+  display.print("HTTP Error: " + String(code));  
+}
+
+void PrintBatLevel(){
+  float BatPercent = ( analogRead(BAT_MONITOR) / 4096.0) * 3.3 * 2;
+  Serial.printf("Bat Level: %f",BatPercent);
+  Serial.println();
+
+  const uint8_t height = 4;
+  uint8_t width = 10;  
+  //BatPercent
+  float percentage = width * ( BatPercent - 3.0)/(3.8 - 3.0);
+  uint8_t bat_w = percentage; //cast back to int
+  
+  bat_w = min(bat_w,width); //restrict to 8
+
+  Serial.printf("Bat_w:%i",bat_w);
+  Serial.println();
+  //x,y,w,h
+  display.drawRect(0,0,width+1,height,GxEPD_BLACK); //Bat Shape
+  display.fillRect(0,0,bat_w,height,GxEPD_BLACK); //amt left
+  display.fillRect(10,1,2,2,GxEPD_BLACK);
+
+}
+
+bool UploadData(float temp, float hum,float pres){
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting --> ");
+  time_now = millis();
+  
+  while(WiFi.status() != WL_CONNECTED) { 
+    delay(10);
+    //Serial.print(".");
+    if(millis() - time_now >= 10000){
+      error_code = 1;
+      Serial.println("Failed");
+      return false; 
+    }
+  }
+
+  Serial.println("Success");
+  Serial.println("");
+  Serial.print("Connected to WiFi network with IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  WiFiClient client;
+  HTTPClient http;
+  http.begin(client, serverName);
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
+  String httpRequestData = "api_key=" + apiKeyValue + "&value1=" + String(temp)
+                         + "&value2=" + String(hum) + "&value3=" + String(pres) + "";
+  Serial.print("httpRequestData: ");
+  Serial.println(httpRequestData);
+
+  int httpResponseCode;
+  //max_tries
+  do{
+    httpResponseCode = http.POST(httpRequestData);
+    Serial.printf("Attempt %i. Error Code: %i",10-max_tries,httpResponseCode);
+    Serial.println();
+    if(max_tries <= 0){
+      error_code = httpResponseCode;
+      http.end();
+      return false;
+    }
+
+    delay(100);
+
+    max_tries--;
+  }
+  while( (httpResponseCode != 200) );
+
+
+  http.end();
+  
+
+}
+
+float computeHeatIndex(float temperature, float humidity){
+  /*
+   *Source: https://github.com/adafruit/DHT-sensor-library/blob/master/DHT.cpp
+   *Formula based on https://byjus.com/heat-index-formula/
+   *Temp in degrees C, humidity %
+   */
+
+  float tempF = temperature * 1.8 + 32;
+  float hi = 0.5 * (tempF + 61.0 + ((tempF - 68.0) * 1.2) + (humidity * 0.094));
+
+  if (hi > 79) {
+    hi = -42.379 + 2.04901523 * tempF + 10.14333127 * humidity +
+         -0.22475541 * tempF * humidity +
+         -0.00683783 * pow(tempF, 2) +
+         -0.05481717 * pow(humidity, 2) +
+         0.00122874 * pow(tempF, 2) * humidity +
+         0.00085282 * tempF * pow(humidity, 2) +
+         -0.00000199 * pow(tempF, 2) * pow(humidity, 2);
+
+    if ((humidity < 13) && (tempF >= 80.0) &&
+        (tempF <= 112.0))
+      hi -= ((13.0 - humidity) * 0.25) *
+            sqrt((17.0 - abs(tempF - 95.0)) * 0.05882);
+
+    else if ((humidity > 85.0) && (tempF >= 80.0) &&
+             (tempF <= 87.0))
+      hi += ((humidity - 85.0) * 0.1) * ((87.0 - tempF) * 0.2);
+  }  
+
+  return (hi - 32) * 0.5556; //convert back to celcius
+
+
+}
+
 void printData(float temp, float hum,float pres){
+  float HeatIndex = computeHeatIndex(temp,hum);
+  float Altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
 
   display.drawInvertedBitmap(0,0,WeatherBitmapArray,296,128, GxEPD_BLACK); //Not too sure why it must be inverted?
-  int y_reading = 80;
-
-  int new_pressure = round(pres/100.0F);
+  uint8_t y_row_1 = 22; uint8_t y_row_2 = 75; int y_increment = 10;
+  uint8_t x_col_1 = 45; uint8_t x_col_2 = 152; uint8_t x_col_3 = 238; 
 
   //display.setCursor(0, 0);
-  display.setTextSize(2);
+  display.setTextSize(1);
 
-  display.setCursor(0,y_reading);
-  display.print(String(temp) + (char)247 + "C"); //degrees symbol
+  display.setCursor(x_col_1,y_row_1);                 display.print("Temperature");
+  display.setCursor(x_col_1,y_row_1 + y_increment);   display.print(String(temp) + (char)247 + "C"); //degrees symbol
 
-  display.setCursor(105,y_reading);
-  display.print( String(hum) + "%");
+  display.setCursor(x_col_1,y_row_2);                 display.print("Pressure");
+  display.setCursor(x_col_1,y_row_2 + y_increment);   display.print( String(int(pres)) + "hPa");
 
-  display.setCursor(195,y_reading);
-  display.print( String(new_pressure) + "hPa"); //pres/100.0F gives decimal places
+  display.setCursor(x_col_2,y_row_1);                 display.print("Humidity");
+  display.setCursor(x_col_2,y_row_1 + y_increment);   display.print( String(hum) + "%");
+
+  display.setCursor(x_col_2,y_row_2);                 display.print("Altitude");
+  display.setCursor(x_col_2,y_row_2 + y_increment);   display.print( String(Altitude) + "m");
+
+  display.setCursor(x_col_3,y_row_1);                 display.print("HeatIndex");
+  display.setCursor(x_col_3,y_row_1 + y_increment);   display.print(String(HeatIndex) + (char)247 + "C"); //degrees symbol
+
 
   //128 X 296  
   //String text = "00:00:00";
@@ -157,9 +285,8 @@ void printData(float temp, float hum,float pres){
   
   String time_string = HoursString + MinutesString + SecondsString;
   
-  
   display.setTextSize(1);
-  display.setCursor(296-50,128-8);
+  display.setCursor(296-50,128-8); //Calculate height and width to put at bottom right
 
   display.print(time_string);
 
@@ -168,90 +295,6 @@ void printData(float temp, float hum,float pres){
   //display.display(); at the end
 }
 
-void PrintNoWifi(){
-  display.setTextSize(1);
-  display.setCursor(0,128-8);
-  display.print("No Wifi");  
-}
-
-void PrintHTTPFail(int code){
-  display.setTextSize(1);
-  display.setCursor(0,128-8);
-  display.print("HTTP Error: " + String(code));  
-}
-
-void PrintBatLevel(){
-  float BatPercent = ( analogRead(BAT_MONITOR) / 4096.0) * 3.3 * 2;
-  Serial.printf("Bat Level: %f",BatPercent);
-  Serial.println();
-
-  const uint8_t height = 4;
-  uint8_t width = 10;  
-  float percentage = width * (BatPercent - 3.0)/(3.8 - 3.0);
-  uint8_t bat_w = percentage; //cast back to int
-  
-  bat_w = min(bat_w,width); //restrict to 8
-
-  Serial.printf("Bat_w:%i",bat_w);
-  Serial.println();
-  //x,y,w,h
-  display.drawRect(0,0,width,height,GxEPD_BLACK);
-  display.fillRect(0,0,bat_w,height,GxEPD_BLACK);
-
-}
-
-bool UploadData(float temp, float hum,float pres){
-  WiFi.begin(ssid, password);
-  Serial.println("Connecting");
-  time_now = millis();
-  
-  while(WiFi.status() != WL_CONNECTED) { 
-    delay(10);
-    //Serial.print(".");
-    if(millis() - time_now >= 10000){
-      error_code = 1;
-      Serial.println("");
-      return false; 
-    }
-  }
-
-  Serial.println("");
-  Serial.print("Connected to WiFi network with IP Address: ");
-  Serial.println(WiFi.localIP());
-
-  WiFiClient client;
-  HTTPClient http;
-  http.begin(client, serverName);
-  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-
-  String httpRequestData = "api_key=" + apiKeyValue + "&value1=" + String(temp)
-                         + "&value2=" + String(hum) + "&value3=" + String(pres/100.0F) + "";
-  Serial.print("httpRequestData: ");
-  Serial.println(httpRequestData);
-
-  int httpResponseCode;
-  //max_tries
-  do{
-    httpResponseCode = http.POST(httpRequestData);
-    Serial.printf("Attempt %i. Error Code: %i",10-max_tries,httpResponseCode);
-    Serial.println();
-    if(max_tries <= 0){
-      error_code = httpResponseCode;
-      http.end();
-      return false;
-    }
-
-    delay(100);
-
-    max_tries--;
-  }
-  while( (httpResponseCode != 200) );
-
-
-  http.end();
-  
-
-}
 
 void setup() {
   //Serial.begin(115200); //will hang the esp32 if used with epaper display
@@ -284,7 +327,7 @@ void setup() {
                   Adafruit_BME280::SAMPLING_X1, // humidity
                   Adafruit_BME280::FILTER_OFF   );
 
-  Serial.println("RTC Memory");
+  Serial.print("RTC Memory ->");
   Serial.printf("%i:%i:%i",Hours,Minutes,Seconds);
   Serial.println();
 
@@ -296,7 +339,7 @@ void loop() {
   bme.takeForcedMeasurement();
   temperature = bme.readTemperature();
   humidity = bme.readHumidity();
-  pressure = bme.readPressure();
+  pressure = bme.readPressure()/100.0F; //in hPa
 
   UploadData(temperature,humidity,pressure);
 
@@ -323,6 +366,9 @@ void loop() {
     display.fillScreen(GxEPD_WHITE); //Clear screen
     printData(temperature,humidity,pressure); //includes the time as well
     if(BAT_USED) PrintBatLevel();
+
+    display.setTextSize(1);
+    display.setCursor(0,128-8);
     
     if(error_code == 1) PrintNoWifi();
     else if(error_code != 0 ) PrintHTTPFail(error_code); 
