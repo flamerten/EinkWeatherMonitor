@@ -52,6 +52,17 @@ For the time function, I used the internal RTC memory and the NTP Client server 
 
 Note that the RTC memory will be initialised on boot up to the assigned value. After that it uses past stored RTC values.
 
+The Secrets.h file was used to protect personal data. To use my code, create a header file called `Secrets.h` and fill in the following detais.
+
+    //Private info, in Gitignore
+
+    const char* WIFI_SSID = "WIFI";
+    const char* WIFI_PASSWORD = "WIFI_PASS";
+
+    const char* BLUEHOST_POST = "BLUEHOST_POST";
+
+    String ESP32_API_KEY = "PERSONAL_ESP32_API";
+
 
 ## Eink Screen
 I added an Eink screen to display the latest data. The [GxEPD2 Library](https://github.com/ZinggJM/GxEPD2) was used with the MH-ET 2.9" Live Epaper Display ([AliExpressLink](https://www.aliexpress.com/item/4001338269518.html?spm=a2g0o.order_list.order_list_main.5.1f7f1802g598H8)).
