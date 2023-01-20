@@ -1,14 +1,35 @@
 # Esp32 EinkWeatherMonitor
 
-I followed a tutorial from this [Source](https://randomnerdtutorials.com/visualize-esp32-esp8266-sensor-readings-from-anywhere/) in order to create an webserver. The webserver is hosted by Bluehost and an ESP32 connected to Wifi posts BME280 sensor data to an SQL server. This is displayed on a chart. The ESP32 displays data from the BME on an Eink Screen.
+I followed a tutorial from this [source](https://randomnerdtutorials.com/visualize-esp32-esp8266-sensor-readings-from-anywhere/) in order to create an webserver. The webserver is hosted by Bluehost and an ESP32 connected to Wifi posts BME280 sensor data to an SQL server. This is displayed on a chart. The ESP32 displays data from the BME on an Eink Screen.
 
-<img src = "src/FirstPrototype.jpg" width = "800" />
+<img src = "src/FinalDesign.jpg" width = "800" />
+
+# Contents
+
+## Software
+Instructions to set up bluehost to recieve weather data from the ESP32 and publish to an online graph
+- [Network Architecture](#network-architecture)
+- [SQL Database](#sql-database)
+- [PHP Scripts](#php-scripts)
+
+## Firmware
+Explanation and code for the ESP32, connected to the Eink screen and BME280
+- [ESP32](#esp32)
+- [Eink Screen](#eink-screen)
+
+## Hardware
+ - [STL Files](./casing/)
+ - [PCB Files](./pcb/)
+ - [Hardware Comments](#hardware-comments)
+
+[Conclusion](#conclusion)
 
 
+# Software
 ## Network Architecture
 <img src="src/network_architecture.png" width="800"/>
 
-## SQL database
+## SQL Database
 Go to `MySQL DatabaseWizard` and create a new database. You can create database users as well. Multiple users are possible to give different access permisions to different users. Hence the database name and the database username is different. To set up MySQL select `phpMyAdmin` This is where we create the SQL database. We click on the SQL tab and enter the SQL query used to create the database.
 
     CREATE TABLE Sensor (
@@ -30,6 +51,7 @@ Below shows an example char viewed on web browser. Note that on mobile browser t
 <img src = " src/example_chart.png" width = "900"/>
 
 
+# Firmware
 ## ESP32
 An [Adafruit ESP32 Huzzah v2](https://www.adafruit.com/product/5400) was used because it could fit in the breadboard better and had Lipo charging capabilities. Hence, this could be used a more portable project.
 
@@ -59,10 +81,18 @@ The Secrets.h file was used to protect personal data. To use my code, create a h
     const char* WIFI_SSID = "WIFI";
     const char* WIFI_PASSWORD = "WIFI_PASS";
 
+    const char* OTA_SSID = "OTA_WIFI";
+    const char* OTA_PASSWORD = "OTA_PASS";
+
     const char* BLUEHOST_POST = "BLUEHOST_POST";
 
     String ESP32_API_KEY = "PERSONAL_ESP32_API";
 
+
+The USB port is only for charging the Huzzah. There is no data cable. Hence, the push button is designed to push the ESP32 into OTA mode.
+
+1) Push button will wake the ESP32 and connect to the OTA WiFI
+2) From there, the IP address is printed on the Eink screen. Connect to IP_address/update over the OTA wifi to upload code over OTA
 
 ## Eink Screen
 I added an Eink screen to display the latest data. The [GxEPD2 Library](https://github.com/ZinggJM/GxEPD2) was used with the MH-ET 2.9" Live Epaper Display ([AliExpressLink](https://www.aliexpress.com/item/4001338269518.html?spm=a2g0o.order_list.order_list_main.5.1f7f1802g598H8)).
@@ -89,3 +119,18 @@ I used this [source](https://forum.arduino.cc/t/help-with-waveshare-epaper-displ
     }
 
 Note that for this library, `display.init` initialises the `Serial.begin` function, and thus there is no need to call it again. Calling `Serial.begin(115200)` before the init will lead to the ESP32 hanging. This was discovered from this [source](https://forum.arduino.cc/t/waveshare-e-paper-displays-with-spi/467865/2552).
+
+
+# Hardware
+<img src="src/USB_C.jpg" width="800"/>
+
+
+## Hardware Comments
+ - The casing seems quite thick and not as portable. Gluing a smaller battery to the PCB could have reduced the thickness, such that the battery can fit between the edge of the PCB and the ESP32
+ - The USB port on the huzzah was orientated the wrong way such that it was facing the inside of the case. Hence, a USB c extension cable was used to enable charging from outside the case
+ - A cuboid is not a very elegant design, having some sort of stand for easier viewing would be better
+ - Having a L shape cover was a soltuion such that i could have space to glue gun the USB-C female plug. However, I only designed 2 screw holes at the 2 edges. For a better fit, screw holes should be placed at the corners. 
+ - Using a Glue gun on the USB-C female plug is okay and seems quite secure. However, a friction fitted 3D enclosure would help to save space and might be more secure in the long run.
+
+
+ # Conclusion

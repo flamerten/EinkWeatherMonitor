@@ -22,6 +22,10 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <AsyncElegantOTA.h>
+
 #include "WeatherBitmap.h" //Local Bitmap
 #include "Secrets.h" //For various private info
 #define BAT_MONITOR 35
@@ -30,10 +34,16 @@
 #define USE_WIFI 1
 #define USE_EINK 1
 
+#define BUTTON 14
+const uint64_t awake_time = 10 * 60 * 1000; //Awake after pressing button for 15mins
+bool upload_mode = false;
 
 // Replace with your network credentials
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
+
+const char* OTA_ssid = OTA_SSID;
+const char* OTA_password = OTA_PASSWORD;
 
 // REPLACE with your Domain name and URL path or IP address with path
 const char* serverName = BLUEHOST_POST;
@@ -67,8 +77,8 @@ int8_t max_tries = 10;
 #define EPD_RST   27 // to EPD RST
 #define EPD_DC    33 // to EPD DC
 #define EPD_SCK   5 // to EPD CLK
-#define EPD_MISO  21 // Master-In Slave-Out not used, as no data from display
-#define EPD_MOSI  19 // to EPD DIN
+#define EPD_MISO  19 // Master-In Slave-Out not used, as no data from display //21 // Had to swap due to errors in PCB
+#define EPD_MOSI  21 // to EPD DIN  //19
 
 //MH-ET Live 2.9" 128 X 296
 //source: https://forum.arduino.cc/t/help-with-waveshare-epaper-display-with-adafruit-huzzah32-esp32-feather-board/574300/8 
@@ -86,16 +96,31 @@ RTC_DATA_ATTR uint8_t Hours = 0;
 RTC_DATA_ATTR uint8_t Minutes = 0;
 RTC_DATA_ATTR uint8_t Seconds = 0;
 
+//Graphing
 #define MAX_GRAPH_PTS 20
 RTC_DATA_ATTR float HeatIndexRecords[MAX_GRAPH_PTS]; //use less, so there are smoother points
 RTC_DATA_ATTR uint8_t RecordFillPosition = 0;
 RTC_DATA_ATTR bool FullCycle = false; //max length of data points have been collected
+
+//OTA
+AsyncWebServer server(80);
 
 int16_t error_code = 0;
 /* 0 No Error
  * 1 Wifi 
  * 100 or more is http error code
  */
+
+
+void setupWebServer(){
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Hi! I am ESP32.");
+  });
+
+  AsyncElegantOTA.begin(&server);    // Start ElegantOTA
+  server.begin();
+  Serial.println("HTTP server started");
+}
 
 void initEink(){
   if(!USE_EINK) return;
@@ -124,7 +149,18 @@ void clearEink(){
 
 void PrintNoWifi(){
   if(!USE_EINK) return;
-  display.print("No Wifi");  
+  else display.print("No Wifi");
+}
+
+void PrintAsyncIP(){
+  if(!USE_EINK) return;
+  if(WiFi.status() == WL_CONNECTED){
+    display.print("Async:");
+    display.print(WiFi.localIP());
+    display.print("/update");
+  }
+  else display.print("No OTA Wifi");
+
 }
 
 void PrintHTTPFail(int code){
@@ -162,23 +198,9 @@ void PrintBatLevel(){
 }
 
 bool UploadData(float temp, float hum,float pres){
-  if(!USE_WIFI){
+  if(!USE_WIFI || error_code == 1){
     error_code = 1;
     return false;
-  }
-
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting --> ");
-  time_now = millis();
-  
-  while(WiFi.status() != WL_CONNECTED) { 
-    delay(10);
-    //Serial.print(".");
-    if(millis() - time_now >= 10000){
-      error_code = 1;
-      Serial.println("Failed");
-      return false; 
-    }
   }
 
   Serial.println("Success");
@@ -436,12 +458,43 @@ void setup() {
   if(!USE_EINK) Serial.begin(115200); //will hang the esp32 if used with epaper display
 
   initEink();
-  pinMode(BAT_MONITOR,INPUT);    
-  //delay(1000);
+  pinMode(BAT_MONITOR,INPUT);
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_14, LOW); 
 
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
   Serial.printf("Deep Sleep set up for %is",TIME_TO_SLEEP);
   Serial.println();
+
+
+  WiFi.mode(WIFI_STA);
+  if(esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0){
+    upload_mode = true;
+    WiFi.begin(OTA_ssid, OTA_password);
+    setupWebServer();
+    uint32_t time_now = millis();
+    while ( (WiFi.status() != WL_CONNECTED) && (millis() - time_now <= 1000)) {
+      delay(500);
+      Serial.print(".");
+    }
+
+    if(WiFi.status() != WL_CONNECTED){
+      error_code = 1;
+    }
+    else Serial.println(WiFi.localIP());
+  }
+  else{
+
+    WiFi.begin(ssid, password);
+    while ( (WiFi.status() != WL_CONNECTED) && (millis() - time_now <= 1000)) {
+      delay(500);
+      Serial.print(".");
+    }
+
+    if(WiFi.status() != WL_CONNECTED){
+      error_code = 1;
+    }
+
+  }
   
   
   #if defined(ESP32FEATHER)
@@ -453,8 +506,10 @@ void setup() {
   bool status = bme.begin(0x76);
   if (!status) {
     Serial.println("Could not find a valid BME280 sensor, check wiring or change I2C address!");
-    pinMode(LED_PIN,OUTPUT); digitalWrite(LED_PIN,HIGH);
-    while(1);
+    display.setTextSize(2);
+    display.println("BME Sensor error");
+    display.display();
+    esp_deep_sleep_start(); // Hope to reset 
   }
   //Weather Monitoring Mode
   bme.setSampling(Adafruit_BME280::MODE_FORCED, // Forced Measurements - perform one measurement, store and then sleep
@@ -467,11 +522,6 @@ void setup() {
   Serial.printf("%i:%i:%i",Hours,Minutes,Seconds);
   Serial.println();
 
-  
-}
-
-void loop() {
-  //Check WiFi connection status
   bme.takeForcedMeasurement();
   Temperature = bme.readTemperature();
   Humidity = bme.readHumidity();
@@ -481,8 +531,9 @@ void loop() {
 
   UploadData(Temperature,Humidity,Pressure);
 
+  //Time
   if(error_code == 1){ // No Wifi
-    Minutes = Minutes + SLEEP_MINUTES;
+    Minutes = Minutes + 10; //millis - sec /10^3, /60 is no of minnutes
 
     if(Minutes >= 60){
       Minutes = Minutes%60;
@@ -493,12 +544,13 @@ void loop() {
   }
   else{
     Serial.println("TimeClient Updated");
-    timeClient.update();
+    while(!timeClient.update()) timeClient.forceUpdate(); //Ensure proper time is retrieved
     Hours = timeClient.getHours();
     Minutes = timeClient.getMinutes();
     Seconds = timeClient.getSeconds();
   }
 
+  //Display
   if(USE_EINK){
     do{
       display.fillScreen(GxEPD_WHITE); //Clear screen
@@ -511,7 +563,8 @@ void loop() {
       display.setCursor(0,125); //numbers and words appear diff?
       display.setFont();
       
-      if(error_code == 1) PrintNoWifi();
+      if(upload_mode) PrintAsyncIP();
+      else if(error_code == 1) PrintNoWifi();
       else if(error_code != 0 ) PrintHTTPFail(error_code); 
     }
     while(display.nextPage());
@@ -525,9 +578,31 @@ void loop() {
       if(BAT_USED) PrintBatLevel();
 
       PrintGraph(HeatIndex);
+  }
 
+  if(!upload_mode){
+    Serial.println("Going to sleep");
+    esp_deep_sleep_start();
   }
   
-  Serial.println("Going to sleep");
-  esp_deep_sleep_start();
+}
+
+void loop() {
+  //If here it keeps checking the wifi manager
+  if( (millis() > awake_time + time_now) || (digitalRead(BUTTON) == LOW)){
+    display.setPartialWindow(0, 115, 190, 128);
+
+    display.firstPage();
+
+    do{
+      display.fillScreen(GxEPD_WHITE);
+      display.setCursor(0,120); //numbers and words appear diff?
+      display.println("No Upload");
+    }while(display.nextPage());
+  
+    Serial.println("Going to sleep");
+    esp_deep_sleep_start();
+  }
+  
+
 }

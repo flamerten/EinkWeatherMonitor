@@ -1,2 +1,4 @@
 
 esp32_bme/Secrets.h
+*.SLDPRT
+*.SLDASM
