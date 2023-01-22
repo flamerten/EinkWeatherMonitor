@@ -92,9 +92,9 @@ GxEPD2_BW<GxEPD2_290_T94, GxEPD2_290_T94::HEIGHT> display(GxEPD2_290_T94(EPD_CS,
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET, NTP_INTERVAL);
 
-RTC_DATA_ATTR uint8_t Hours = 0;
-RTC_DATA_ATTR uint8_t Minutes = 0;
-RTC_DATA_ATTR uint8_t Seconds = 0;
+RTC_DATA_ATTR uint8_t RTC_Hours = 0;
+RTC_DATA_ATTR uint8_t RTC_Minutes = 0;
+RTC_DATA_ATTR uint8_t RTC_Seconds = 0;
 
 //Graphing
 #define MAX_GRAPH_PTS 20
@@ -324,21 +324,6 @@ void printData(float temp, float hum,float pres){
   Serial.printf("height: %i ",tbh);
   Serial.println();
 */
-  String HoursString = String(Hours) +":";
-  if(Hours < 10)     HoursString = "0" + HoursString;
-  String MinutesString = String(Minutes) +":";
-  if(Minutes < 10)   MinutesString = "0" + MinutesString;
-  String SecondsString = String(Seconds);
-  if(Seconds < 10)   SecondsString = "0" + SecondsString;  
-  
-  String time_string = HoursString + MinutesString + SecondsString;
-  
-  if(!USE_EINK) return;
-
-  display.setTextSize(1);
-  display.setCursor(296-50,128-8); //Calculate height and width to put at bottom right
-
-  display.print(time_string);
 
   //Serial.println(time_string);
   
@@ -454,6 +439,52 @@ void PrintGraph(float HI){
 
 }
 
+void connectWifi(){
+  WiFi.mode(WIFI_STA);
+  uint32_t WifiConnectStart = millis();
+  upload_mode = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0);
+
+  if(upload_mode) WiFi.begin(OTA_ssid, OTA_password);
+  else            WiFi.begin(ssid, password);
+
+  while ( (WiFi.status() != WL_CONNECTED) && (millis() - WifiConnectStart <= 5000)) { //try to connect for 5s
+    delay(500);
+    Serial.print(".");
+  }
+
+  if(WiFi.status() != WL_CONNECTED){
+    error_code = 1;
+  }
+  if(upload_mode) setupWebServer();
+
+}
+
+void updateBottom(String msg){
+  display.setTextSize(1); //For Error codes
+  display.setCursor(0,125); //numbers and words appear diff?
+  display.setFont();
+  display.setPartialWindow(0, 115, 296, 128);
+  display.firstPage();
+
+  String HoursString   = String(RTC_Hours) +":";
+  if(RTC_Hours < 10)     HoursString = "0" + HoursString;
+  String MinutesString = String(RTC_Minutes) +":";
+  if(RTC_Minutes < 10)   MinutesString = "0" + MinutesString;
+  String SecondsString = String(RTC_Seconds);
+  if(RTC_Seconds < 10)   SecondsString = "0" + SecondsString;  
+  
+  String time_string = HoursString + MinutesString + SecondsString;
+
+  do{
+    display.fillScreen(GxEPD_WHITE);
+    display.setCursor(0,120); //numbers and words appear diff?
+    display.println(msg);
+
+    display.setCursor(296-50,128-8); //Calculate height and width to put at bottom right
+    display.print(time_string);
+  }while(display.nextPage());
+}
+
 void setup() {
   if(!USE_EINK) Serial.begin(115200); //will hang the esp32 if used with epaper display
 
@@ -464,38 +495,6 @@ void setup() {
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
   Serial.printf("Deep Sleep set up for %is",TIME_TO_SLEEP);
   Serial.println();
-
-
-  WiFi.mode(WIFI_STA);
-  if(esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0){
-    upload_mode = true;
-    WiFi.begin(OTA_ssid, OTA_password);
-    setupWebServer();
-    uint32_t time_now = millis();
-    while ( (WiFi.status() != WL_CONNECTED) && (millis() - time_now <= 1000)) {
-      delay(500);
-      Serial.print(".");
-    }
-
-    if(WiFi.status() != WL_CONNECTED){
-      error_code = 1;
-    }
-    else Serial.println(WiFi.localIP());
-  }
-  else{
-
-    WiFi.begin(ssid, password);
-    while ( (WiFi.status() != WL_CONNECTED) && (millis() - time_now <= 1000)) {
-      delay(500);
-      Serial.print(".");
-    }
-
-    if(WiFi.status() != WL_CONNECTED){
-      error_code = 1;
-    }
-
-  }
-  
   
   #if defined(ESP32FEATHER)
     Wire.begin(22,20);
@@ -519,7 +518,7 @@ void setup() {
                   Adafruit_BME280::FILTER_OFF   );
 
   Serial.print("RTC Memory -> ");
-  Serial.printf("%i:%i:%i",Hours,Minutes,Seconds);
+  Serial.printf("%i:%i:%i",RTC_Hours,RTC_Minutes,RTC_Seconds);
   Serial.println();
 
   bme.takeForcedMeasurement();
@@ -529,25 +528,11 @@ void setup() {
   HeatIndex = computeHeatIndex(Temperature,Humidity); //HeatIndex = bme.readHeatIndex(true); - pending push request
   Altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
 
-  UploadData(Temperature,Humidity,Pressure);
-
-  //Time
-  if(error_code == 1){ // No Wifi
-    Minutes = Minutes + 10; //millis - sec /10^3, /60 is no of minnutes
-
-    if(Minutes >= 60){
-      Minutes = Minutes%60;
-      Hours = (Hours + 1)%24;
-    } 
-
-    Serial.println("RTC Mem Used");
-  }
-  else{
-    Serial.println("TimeClient Updated");
-    while(!timeClient.update()) timeClient.forceUpdate(); //Ensure proper time is retrieved
-    Hours = timeClient.getHours();
-    Minutes = timeClient.getMinutes();
-    Seconds = timeClient.getSeconds();
+  //Increment RTC and then print it to the Eink Device
+  RTC_Minutes = RTC_Minutes + 11; //11 instead of 10, estimate that wake up lasts around 1min
+  if(RTC_Minutes >= 60){
+    RTC_Minutes = RTC_Minutes%60;
+    RTC_Hours   = (RTC_Hours + 1)%24;
   }
 
   //Display
@@ -558,14 +543,6 @@ void setup() {
       if(BAT_USED) PrintBatLevel();
 
       PrintGraph(HeatIndex);
-
-      display.setTextSize(1); //For Error codes
-      display.setCursor(0,125); //numbers and words appear diff?
-      display.setFont();
-      
-      if(upload_mode) PrintAsyncIP();
-      else if(error_code == 1) PrintNoWifi();
-      else if(error_code != 0 ) PrintHTTPFail(error_code); 
     }
     while(display.nextPage());
 
@@ -576,9 +553,26 @@ void setup() {
   else{
       printData(Temperature,Humidity,Pressure); //includes the time as well
       if(BAT_USED) PrintBatLevel();
-
       PrintGraph(HeatIndex);
   }
+
+  connectWifi();
+  UploadData(Temperature,Humidity,Pressure);
+
+  if(error_code != 1){
+    // Update internal clock
+    Serial.println("TimeClient Updated");
+    while(!timeClient.update()) timeClient.forceUpdate(); //Ensure proper time is retrieved
+    RTC_Hours = timeClient.getHours();
+    RTC_Minutes = timeClient.getMinutes();
+    RTC_Seconds = timeClient.getSeconds();
+  }
+  
+  if(upload_mode && error_code != 1)          updateBottom("Async:" + String(WiFi.localIP()) + "/update");
+  else if((error_code == 1) && upload_mode)   updateBottom("No OTA Wifi");
+  else if(error_code == 1)                    updateBottom("No Wifi");
+  else if(error_code != 0)                    updateBottom("HTTP Error:" + String(error_code));
+  else                                        updateBottom(""); //No errors so empty string is good
 
   if(!upload_mode){
     Serial.println("Going to sleep");
@@ -588,21 +582,12 @@ void setup() {
 }
 
 void loop() {
-  //If here it keeps checking the wifi manager
-  if( (millis() > awake_time + time_now) || (digitalRead(BUTTON) == LOW)){
-    display.setPartialWindow(0, 115, 190, 128);
+  //If here it keeps checking the wifi manager until the awake time exceeds
+  if( (millis() > awake_time) || (digitalRead(BUTTON) == LOW)){
+    updateBottom("No Upload");
 
-    display.firstPage();
-
-    do{
-      display.fillScreen(GxEPD_WHITE);
-      display.setCursor(0,120); //numbers and words appear diff?
-      display.println("No Upload");
-    }while(display.nextPage());
-  
     Serial.println("Going to sleep");
     esp_deep_sleep_start();
   }
-  
 
 }

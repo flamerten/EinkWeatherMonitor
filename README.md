@@ -20,6 +20,7 @@ Explanation and code for the ESP32, connected to the Eink screen and BME280
 ## Hardware
  - [STL Files](./casing/)
  - [PCB Files](./pcb/)
+ - [Energy](#energy)
  - [Hardware Comments](#hardware-comments)
 
 [Conclusion](#conclusion)
@@ -124,6 +125,12 @@ Note that for this library, `display.init` initialises the `Serial.begin` functi
 # Hardware
 <img src="src/USB_C.jpg" width="800"/>
 
+## Energy
+Energy usage was measured using a multimeter. One full cycle of waking up was noted to consume around 0.011mWh. So for a device that refreshes every 10minutes, the energy consumption is 13.65 mWh/day. The device can thus last around 135 days on a 500mAH battery.
+
+In designing the firmware, energy saving was taken into consideration. Both the BME sensor (line 514 of [esp32_bme.ino](firmware/esp32_bme/esp32_bme.ino)) and the ESP32 were designed to go to sleep after completeing their respective jobs.
+
+Enabling or searching for WiFi can be energy consuming. Thus uploading sensor data and updating the time client data was done just before the appliance is about to go to sleep.
 
 ## Hardware Comments
  - The casing seems quite thick and not as portable. Gluing a smaller battery to the PCB could have reduced the thickness, such that the battery can fit between the edge of the PCB and the ESP32
