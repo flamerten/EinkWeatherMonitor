@@ -454,8 +454,9 @@ void connectWifi(){
 
   if(WiFi.status() != WL_CONNECTED){
     error_code = 1;
+    Serial.println("Unable to connect to Wifi");
   }
-  if(upload_mode) setupWebServer();
+  if(upload_mode && error_code != 1) setupWebServer();
 
 }
 
@@ -547,8 +548,6 @@ void setup() {
     while(display.nextPage());
 
     display.display();
-
-    display.powerOff();
   }
   else{
       printData(Temperature,Humidity,Pressure); //includes the time as well
@@ -558,24 +557,28 @@ void setup() {
 
   connectWifi();
   UploadData(Temperature,Humidity,Pressure);
-
+  
   if(error_code != 1){
     // Update internal clock
-    Serial.println("TimeClient Updated");
-    while(!timeClient.update()) timeClient.forceUpdate(); //Ensure proper time is retrieved
+    Serial.println("Updating TimeClient");
+    while(!timeClient.update()){
+      timeClient.forceUpdate(); //Ensure proper time is retrieved
+    }
     RTC_Hours = timeClient.getHours();
     RTC_Minutes = timeClient.getMinutes();
     RTC_Seconds = timeClient.getSeconds();
+    Serial.println("TimeClient Updated");
   }
   
-  if(upload_mode && error_code != 1)          updateBottom("Async:" + String(WiFi.localIP()) + "/update");
-  else if((error_code == 1) && upload_mode)   updateBottom("No OTA Wifi");
-  else if(error_code == 1)                    updateBottom("No Wifi");
-  else if(error_code != 0)                    updateBottom("HTTP Error:" + String(error_code));
-  else                                        updateBottom(""); //No errors so empty string is good
+  if(upload_mode && error_code != 1)            updateBottom("Async:" + (WiFi.localIP()).toString() + "/update");
+  else if((upload_mode) && (error_code == 1))   updateBottom("No OTA Wifi");
+  else if(error_code == 1)                      updateBottom("No Wifi");
+  else if(error_code != 0)                      updateBottom("HTTP Error:" + String(error_code));
+  else                                          updateBottom(""); //No errors so empty string is good
 
   if(!upload_mode){
     Serial.println("Going to sleep");
+    display.powerOff();
     esp_deep_sleep_start();
   }
   
@@ -587,6 +590,7 @@ void loop() {
     updateBottom("No Upload");
 
     Serial.println("Going to sleep");
+    display.powerOff();
     esp_deep_sleep_start();
   }
 
