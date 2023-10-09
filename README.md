@@ -101,7 +101,7 @@ Note that for this library, `display.init` initialises the `Serial.begin` functi
 - 4 M3 screws are threaded into the case to fix the cover over the bottom case.
 
 ## Energy
-Energy usage was measured using a multimeter. One full cycle of waking up was noted to consume around 0.011mWh. So for a device that refreshes every 10minutes, the energy consumption is 13.65 mWh/day. The device can thus last around 135 days on a 500mAH battery.
+Energy usage was measured using a multimeter. One full cycle of waking up was noted to consume around 0.011mWh. So for a device that refreshes every 10minutes, the energy consumption is 13.65 mW/day. The device can thus last around 36 days on a 500mAH battery.
 
 In designing the firmware, energy saving was taken into consideration. Both the BME sensor (line 514 of [esp32_bme.ino](firmware/esp32_bme/esp32_bme.ino)) and the ESP32 were designed to go to sleep after completeing their respective jobs.
 
