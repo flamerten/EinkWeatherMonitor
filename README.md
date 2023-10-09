@@ -1,56 +1,25 @@
 # Esp32 EinkWeatherMonitor
+This E-Ink Weather Monitor uses a BME280 sensor to read temperature and humidity data every 10minutes. This is displayed on an Eink Screen and stored in a self-hosted webserver using the HTTP Protocol. 
 
-I followed a tutorial from this [source](https://randomnerdtutorials.com/visualize-esp32-esp8266-sensor-readings-from-anywhere/) in order to create an webserver. The webserver is hosted by Bluehost and an ESP32 connected to Wifi posts BME280 sensor data to an SQL server. This is displayed on a chart. The ESP32 displays data from the BME on an Eink Screen.
 
-<img src = "src/FinalDesign.jpg" width = "800" />
+<img src = "src/V2.jpg" width = "800" />
 
 # Contents
-
-## Software
-Instructions to set up bluehost to recieve weather data from the ESP32 and publish to an online graph
-- [Network Architecture](#network-architecture)
-- [SQL Database](#sql-database)
-- [PHP Scripts](#php-scripts)
-
 ## Firmware
 Explanation and code for the ESP32, connected to the Eink screen and BME280
 - [ESP32](#esp32)
 - [Eink Screen](#eink-screen)
 
 ## Hardware
- - [STL Files](./casing/)
- - [PCB Files](./pcb/)
+ - [STL Files](./casing/) with [Case Comments](#case-comments)
+ - [PCB Files](./pcb/) (Manufactured by JLCPCB)
  - [Energy](#energy)
- - [Hardware Comments](#hardware-comments)
 
-[Conclusion](#conclusion)
-
-
-# Software
-## Network Architecture
-<img src="src/network_architecture.png" width="800"/>
-
-## SQL Database
-Go to `MySQL DatabaseWizard` and create a new database. You can create database users as well. Multiple users are possible to give different access permisions to different users. Hence the database name and the database username is different. To set up MySQL select `phpMyAdmin` This is where we create the SQL database. We click on the SQL tab and enter the SQL query used to create the database.
-
-    CREATE TABLE Sensor (
-        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        value1 VARCHAR(10),
-        value2 VARCHAR(10),
-        value3 VARCHAR(10),
-        reading_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-
-On the left side, we notice we can see the full database which is named Sensor, and a New tab which we can use to add data.
-
-## PHP Scripts
-
-Go back to advanced and search for `File Manager`. Under public_html create new files for the 2 scripts [esp-chart.php](php/esp-chart.php) and [post-data.php](php/post-data.php). Note that they both have the same api_key_value which will be used by the ESP32.  post-data.php is used to post data to the SQL server while esp-chart processes SQL data and plots in on a graph. The graph is built with the [highcharts library](https://www.highcharts.com/docs/index).
-
-Below shows an example char viewed on web browser. Note that on mobile browser the chart is squeezed so it will show half the data. If the time interval between data points is 15mins originally on desktop, it will be shown as 30mins on mobile.
-
-<img src = " src/example_chart.png" width = "900"/>
-
+## Software
+Instructions to set up bluehost to recieve weather data from the ESP32 and publish to an online graph. These were mainly adapted from this [source](https://randomnerdtutorials.com/visualize-esp32-esp8266-sensor-readings-from-anywhere/).
+- [Network Architecture](#network-architecture)
+- [SQL Database](#sql-database)
+- [PHP Scripts](#php-scripts)
 
 # Firmware
 ## ESP32
@@ -90,10 +59,10 @@ The Secrets.h file was used to protect personal data. To use my code, create a h
     String ESP32_API_KEY = "PERSONAL_ESP32_API";
 
 
-The USB port is only for charging the Huzzah. There is no data cable. Hence, the push button is designed to push the ESP32 into OTA mode.
+The USB port is only for charging the Huzzah. There is no data cable due to mistakes in the PCB. Hence, the push button is designed to push the ESP32 into OTA mode.
 
 1) Push button will wake the ESP32 and connect to the OTA WiFI
-2) From there, the IP address is printed on the Eink screen. Connect to IP_address/update over the OTA wifi to upload code over OTA
+2) From there, the IP address is printed on the Eink screen. Connect to IP_address/update over the OTA wifi to upload code over OTA.
 
 ## Eink Screen
 I added an Eink screen to display the latest data. The [GxEPD2 Library](https://github.com/ZinggJM/GxEPD2) was used with the MH-ET 2.9" Live Epaper Display ([AliExpressLink](https://www.aliexpress.com/item/4001338269518.html?spm=a2g0o.order_list.order_list_main.5.1f7f1802g598H8)).
@@ -123,7 +92,13 @@ Note that for this library, `display.init` initialises the `Serial.begin` functi
 
 
 # Hardware
-<img src="src/USB_C.jpg" width="800"/>
+<img src="src/V2_Side.jpg" width="800"/>
+
+## Case Comments
+- [STL Files](./casing/) & [PCB Files](./pcb/)
+- Holes at the side are used to allow ventillation from surrounding air, allowing the BME280 to read environmental data
+- There was a mistake made in the PCB design, and I was thus forced to reroute the power cables to an external USB-C plug. Hence, OTA is used to program the board while the USB-C cable is used to charge the Lipo Battery.
+- 4 M3 screws are threaded into the case to fix the cover over the bottom case.
 
 ## Energy
 Energy usage was measured using a multimeter. One full cycle of waking up was noted to consume around 0.011mWh. So for a device that refreshes every 10minutes, the energy consumption is 13.65 mWh/day. The device can thus last around 135 days on a 500mAH battery.
@@ -132,12 +107,28 @@ In designing the firmware, energy saving was taken into consideration. Both the 
 
 Enabling or searching for WiFi can be energy consuming. Thus uploading sensor data and updating the time client data was done just before the appliance is about to go to sleep.
 
-## Hardware Comments
- - The casing seems quite thick and not as portable. Gluing a smaller battery to the PCB could have reduced the thickness, such that the battery can fit between the edge of the PCB and the ESP32
- - The USB port on the huzzah was orientated the wrong way such that it was facing the inside of the case. Hence, a USB c extension cable was used to enable charging from outside the case
- - A cuboid is not a very elegant design, having some sort of stand for easier viewing would be better
- - Having a L shape cover was a soltuion such that i could have space to glue gun the USB-C female plug. However, I only designed 2 screw holes at the 2 edges. For a better fit, screw holes should be placed at the corners. 
- - Using a Glue gun on the USB-C female plug is okay and seems quite secure. However, a friction fitted 3D enclosure would help to save space and might be more secure in the long run.
 
+ # Software
+## Network Architecture
+<img src="src/network_architecture.png" width="800"/>
 
- # Conclusion
+## SQL Database
+Go to `MySQL DatabaseWizard` and create a new database. You can create database users as well. Multiple users are possible to give different access permisions to different users. Hence the database name and the database username is different. To set up MySQL select `phpMyAdmin` This is where we create the SQL database. We click on the SQL tab and enter the SQL query used to create the database.
+
+    CREATE TABLE Sensor (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        value1 VARCHAR(10),
+        value2 VARCHAR(10),
+        value3 VARCHAR(10),
+        reading_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+
+On the left side, we notice we can see the full database which is named Sensor, and a New tab which we can use to add data.
+
+## PHP Scripts
+
+Go back to advanced and search for `File Manager`. Under public_html create new files for the 2 scripts [esp-chart.php](php/esp-chart.php) and [post-data.php](php/post-data.php). Note that they both have the same api_key_value which will be used by the ESP32.  post-data.php is used to post data to the SQL server while esp-chart processes SQL data and plots in on a graph. The graph is built with the [highcharts library](https://www.highcharts.com/docs/index).
+
+Below shows an example char viewed on web browser. Note that on mobile browser the chart is squeezed so it will show half the data. If the time interval between data points is 15mins originally on desktop, it will be shown as 30mins on mobile.
+
+<img src = " src/example_chart.png" width = "900"/>
