@@ -45,12 +45,6 @@ const char* password = WIFI_PASSWORD;
 const char* OTA_ssid = OTA_SSID;
 const char* OTA_password = OTA_PASSWORD;
 
-// REPLACE with your Domain name and URL path or IP address with path
-const char* serverName = BLUEHOST_POST;
-
-// Keep this API Key value to be compatible with the PHP code provided in the project page. 
-// If you change the apiKeyValue value, the PHP file /post-data.php also needs to have the same key 
-String apiKeyValue = ESP32_API_KEY;
 
 //Sensor
 Adafruit_BME280 bme;
@@ -67,9 +61,7 @@ float Temperature, Humidity, Pressure, HeatIndex, Altitude;
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
 #define SLEEP_MINUTES 10
 const uint64_t TIME_TO_SLEEP = SLEEP_MINUTES*60;  
-uint64_t time_now;
-int8_t max_tries = 10;
-
+#define MAX_TRIES 10
 
 //Eink
 #define EPD_BUSY  32  // to EPD BUSY
@@ -163,11 +155,6 @@ void PrintAsyncIP(){
 
 }
 
-void PrintHTTPFail(int code){
-  if(!USE_EINK) return;
-  display.print("HTTP Error: " + String(code));  
-}
-
 void PrintBatLevel(){
   float BatPercent = ( analogRead(BAT_MONITOR) / 4096.0) * 3.3 * 2;
   Serial.printf("Bat Level: %f",BatPercent);
@@ -194,51 +181,6 @@ void PrintBatLevel(){
   display.setCursor(15,height); //Picopixel starts at the bottomleft/centre?
   display.print(BatPercent,2); //2dp precision of bat level
   display.setFont(); //
-
-}
-
-bool UploadData(float temp, float hum,float pres){
-  if(!USE_WIFI || error_code == 1){
-    error_code = 1;
-    return false;
-  }
-
-  Serial.println("Success");
-  Serial.println("");
-  Serial.print("Connected to WiFi network with IP Address: ");
-  Serial.println(WiFi.localIP());
-
-  WiFiClient client;
-  HTTPClient http;
-  http.begin(client, serverName);
-  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-
-  String httpRequestData = "api_key=" + apiKeyValue + "&value1=" + String(temp)
-                         + "&value2=" + String(hum) + "&value3=" + String(pres) + "";
-  Serial.print("httpRequestData: ");
-  Serial.println(httpRequestData);
-
-  int httpResponseCode;
-  //max_tries
-  do{
-    httpResponseCode = http.POST(httpRequestData);
-    Serial.printf("Attempt %i. Error Code: %i",10-max_tries,httpResponseCode);
-    Serial.println();
-    if(max_tries <= 0){
-      error_code = httpResponseCode;
-      http.end();
-      return false;
-    }
-
-    delay(100);
-
-    max_tries--;
-  }
-  while( (httpResponseCode != 200) );
-
-
-  http.end();
-  return true;
 
 }
 
@@ -442,7 +384,6 @@ void PrintGraph(float HI){
 void connectWifi(){
   WiFi.mode(WIFI_STA);
   uint32_t WifiConnectStart = millis();
-  upload_mode = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0);
 
   if(upload_mode) WiFi.begin(OTA_ssid, OTA_password);
   else            WiFi.begin(ssid, password);
@@ -496,6 +437,12 @@ void setup() {
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
   Serial.printf("Deep Sleep set up for %is",TIME_TO_SLEEP);
   Serial.println();
+
+  esp_sleep_wakeup_cause_t wakeup_cause = esp_sleep_get_wakeup_cause();
+
+  upload_mode = (wakeup_cause == ESP_SLEEP_WAKEUP_EXT0);
+  Serial.printf("Upload Mode %i:",upload_mode);
+  
   
   #if defined(ESP32FEATHER)
     Wire.begin(22,20);
@@ -530,7 +477,9 @@ void setup() {
   Altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
 
   //Increment RTC and then print it to the Eink Device
-  RTC_Minutes = RTC_Minutes + 11; //11 instead of 10, estimate that wake up lasts around 1min
+  if(upload_mode) RTC_Minutes = RTC_Minutes + SLEEP_MINUTES/2; //Averages to about half, since upload mode does not occur at 10mins 
+  else            RTC_Minutes = RTC_Minutes + SLEEP_MINUTES;
+  
   if(RTC_Minutes >= 60){
     RTC_Minutes = RTC_Minutes%60;
     RTC_Hours   = (RTC_Hours + 1)%24;
@@ -555,26 +504,42 @@ void setup() {
       PrintGraph(HeatIndex);
   }
 
-  connectWifi();
-  UploadData(Temperature,Humidity,Pressure);
+  if((wakeup_cause == ESP_SLEEP_WAKEUP_UNDEFINED) || (wakeup_cause == ESP_SLEEP_WAKEUP_EXT0)){
+    connectWifi(); //Only look for wifi from the start.
+  }
   
   if(error_code != 1){
     // Update internal clock
     Serial.println("Updating TimeClient");
+
+    uint8_t TC_Updates = 5;
+    
     while(!timeClient.update()){
-      timeClient.forceUpdate(); //Ensure proper time is retrieved
+      timeClient.forceUpdate();
+      TC_Updates--;
+      if(TC_Updates <= 0){
+        error_code = 2;
+        break;
+      }
     }
-    RTC_Hours = timeClient.getHours();
-    RTC_Minutes = timeClient.getMinutes();
-    RTC_Seconds = timeClient.getSeconds();
-    Serial.println("TimeClient Updated");
+
+    if(error_code == 0){ // no errors 
+      RTC_Hours = timeClient.getHours();
+      RTC_Minutes = timeClient.getMinutes();
+      RTC_Seconds = timeClient.getSeconds();
+      Serial.println("TimeClient Updated");
+    }
+    else{
+      Serial.println("Time Client failed to update"); //Simply use RTC
+    }
   }
   
   if(upload_mode && error_code != 1)            updateBottom("Async:" + (WiFi.localIP()).toString() + "/update");
   else if((upload_mode) && (error_code == 1))   updateBottom("No OTA Wifi");
   else if(error_code == 1)                      updateBottom("No Wifi");
+  else if(error_code == 2)                      updateBottom("TimeClient Error");
   else if(error_code != 0)                      updateBottom("HTTP Error:" + String(error_code));
-  else                                          updateBottom(""); //No errors so empty string is good
+  else                                          updateBottom(""); //No errors  - error code = 0, so empty string is good
 
   if(!upload_mode){
     Serial.println("Going to sleep");
