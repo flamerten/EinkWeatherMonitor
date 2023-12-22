@@ -59,7 +59,7 @@ float Temperature, Humidity, Pressure, HeatIndex, Altitude;
 
 //Connection Timings
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
-#define SLEEP_MINUTES 10
+#define SLEEP_MINUTES 15
 const uint64_t TIME_TO_SLEEP = SLEEP_MINUTES*60;  
 #define MAX_TRIES 10
 
@@ -80,9 +80,6 @@ GxEPD2_BW<GxEPD2_290_T94, GxEPD2_290_T94::HEIGHT> display(GxEPD2_290_T94(EPD_CS,
 #define NTP_OFFSET  28800 // In seconds
 #define NTP_INTERVAL 60 * 1000    // In miliseconds
 #define NTP_ADDRESS  "sg.pool.ntp.org"
-
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET, NTP_INTERVAL);
 
 RTC_DATA_ATTR uint8_t RTC_Hours = 0;
 RTC_DATA_ATTR uint8_t RTC_Minutes = 0;
@@ -432,16 +429,13 @@ void setup() {
 
   initEink();
   pinMode(BAT_MONITOR,INPUT);
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_14, LOW); 
-
-  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
   Serial.printf("Deep Sleep set up for %is",TIME_TO_SLEEP);
   Serial.println();
 
   esp_sleep_wakeup_cause_t wakeup_cause = esp_sleep_get_wakeup_cause();
 
   upload_mode = (wakeup_cause == ESP_SLEEP_WAKEUP_EXT0);
-  Serial.printf("Upload Mode %i:",upload_mode);
+  Serial.printf("Wakeup Cause %i:",wakeup_cause);
   
   
   #if defined(ESP32FEATHER)
@@ -506,33 +500,39 @@ void setup() {
 
   if((wakeup_cause == ESP_SLEEP_WAKEUP_UNDEFINED) || (wakeup_cause == ESP_SLEEP_WAKEUP_EXT0)){
     connectWifi(); //Only look for wifi from the start.
-  }
-  
-  if(error_code != 1){
-    // Update internal clock
-    Serial.println("Updating TimeClient");
 
-    uint8_t TC_Updates = 5;
-    
-    while(!timeClient.update()){
-      timeClient.forceUpdate();
-      TC_Updates--;
-      if(TC_Updates <= 0){
-        error_code = 2;
-        break;
+    if(error_code != 1){
+      // Update internal clock only when connected to WiFi
+      Serial.println("Updating TimeClient");
+      
+      WiFiUDP ntpUDP;
+      NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET, NTP_INTERVAL);
+      
+      uint8_t TC_Updates = 5;
+      
+      while(!timeClient.update()){
+        timeClient.forceUpdate();
+        TC_Updates--;
+        if(TC_Updates <= 0){
+          error_code = 2;
+          break;
+        }
+      }
+  
+      if(error_code == 0){ // no errors 
+        RTC_Hours = timeClient.getHours();
+        RTC_Minutes = timeClient.getMinutes();
+        RTC_Seconds = timeClient.getSeconds();
+        Serial.println("TimeClient Updated");
+      }
+      else{
+        Serial.println("Time Client failed to update"); //Simply use RTC
       }
     }
 
-    if(error_code == 0){ // no errors 
-      RTC_Hours = timeClient.getHours();
-      RTC_Minutes = timeClient.getMinutes();
-      RTC_Seconds = timeClient.getSeconds();
-      Serial.println("TimeClient Updated");
-    }
-    else{
-      Serial.println("Time Client failed to update"); //Simply use RTC
-    }
   }
+  
+
   
   if(upload_mode && error_code != 1)            updateBottom("Async:" + (WiFi.localIP()).toString() + "/update");
   else if((upload_mode) && (error_code == 1))   updateBottom("No OTA Wifi");
@@ -541,9 +541,12 @@ void setup() {
   else if(error_code != 0)                      updateBottom("HTTP Error:" + String(error_code));
   else                                          updateBottom(""); //No errors  - error code = 0, so empty string is good
 
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_14, LOW); 
+  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
   if(!upload_mode){
     Serial.println("Going to sleep");
     display.powerOff();
+
     esp_deep_sleep_start();
   }
   
