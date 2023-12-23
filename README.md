@@ -1,5 +1,5 @@
 # Esp32 EinkWeatherMonitor
-This E-Ink Weather Monitor uses a BME280 sensor to read temperature and humidity data every 10minutes. This is displayed on an Eink Screen and stored in a self-hosted webserver using the HTTP Protocol. 
+This E-Ink Weather Monitor uses a BME280 sensor to read and display temperature and humidity data every 15 minutes on an Eink Screen. A PCB for the components was designed, and was enclosed in a 3D printed case. 
 
 
 <img src = "src/V2.jpg" width = "800" />
@@ -16,10 +16,7 @@ Explanation and code for the ESP32, connected to the Eink screen and BME280
  - [Energy](#energy)
 
 ## Software
-Instructions to set up bluehost to recieve weather data from the ESP32 and publish to an online graph. These were mainly adapted from this [source](https://randomnerdtutorials.com/visualize-esp32-esp8266-sensor-readings-from-anywhere/).
-- [Network Architecture](#network-architecture)
-- [SQL Database](#sql-database)
-- [PHP Scripts](#php-scripts)
+Instructions to set up bluehost to recieve weather data from the ESP32 and publish to an online graph. These were mainly adapted from this [source](https://randomnerdtutorials.com/visualize-esp32-esp8266-sensor-readings-from-anywhere/). This was depreceated because paying for Bluehost was expensive and after a while I didn't see value in storingw weather data over the long term. The PHP documentation can be found here, [Link](firmware/php/). The [Firmware](#firmware) section also goes over how to post data. The implementation can be found in this previous [commit](https://github.com/flamerten/EinkWeatherMonitor/tree/0d8b8b7bda3bd70d65bcf7df93bc7a092cfe990f)
 
 # Firmware
 ## ESP32
@@ -108,27 +105,4 @@ In designing the firmware, energy saving was taken into consideration. Both the 
 Enabling or searching for WiFi can be energy consuming. Thus uploading sensor data and updating the time client data was done just before the appliance is about to go to sleep.
 
 
- # Software
-## Network Architecture
-<img src="src/network_architecture.png" width="800"/>
 
-## SQL Database
-Go to `MySQL DatabaseWizard` and create a new database. You can create database users as well. Multiple users are possible to give different access permisions to different users. Hence the database name and the database username is different. To set up MySQL select `phpMyAdmin` This is where we create the SQL database. We click on the SQL tab and enter the SQL query used to create the database.
-
-    CREATE TABLE Sensor (
-        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        value1 VARCHAR(10),
-        value2 VARCHAR(10),
-        value3 VARCHAR(10),
-        reading_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-
-On the left side, we notice we can see the full database which is named Sensor, and a New tab which we can use to add data.
-
-## PHP Scripts
-
-Go back to advanced and search for `File Manager`. Under public_html create new files for the 2 scripts [esp-chart.php](php/esp-chart.php) and [post-data.php](php/post-data.php). Note that they both have the same api_key_value which will be used by the ESP32.  post-data.php is used to post data to the SQL server while esp-chart processes SQL data and plots in on a graph. The graph is built with the [highcharts library](https://www.highcharts.com/docs/index).
-
-Below shows an example char viewed on web browser. Note that on mobile browser the chart is squeezed so it will show half the data. If the time interval between data points is 15mins originally on desktop, it will be shown as 30mins on mobile.
-
-<img src = " src/example_chart.png" width = "900"/>
